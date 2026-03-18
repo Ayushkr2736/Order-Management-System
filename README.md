@@ -1,108 +1,274 @@
-# SDE-1 Full Stack Assignment — Order Management System
+# Order Management System
 
-## Overview
+A full-stack order management application built with **React**, **Node.js/Express**, and **PostgreSQL**. This project was developed as part of the SDE-1 Full Stack Assignment — involving a comprehensive code audit, critical bug fixes, a new feature (order cancellation), and a CI/CD pipeline.
 
-This is a small order management application with a **React** frontend, **Node.js/Express** API, and **PostgreSQL** database. The app allows you to view orders, create new orders, and search customers.
+---
 
-The codebase is functional but has **several bugs, security issues, and architectural problems**. Your job is to find them, fix the critical ones, extend the app with a new feature, and improve the deployment setup.
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18, JavaScript, CSS |
+| **Backend** | Node.js 18, Express 4 |
+| **Database** | PostgreSQL 15 |
+| **Infrastructure** | Docker, Docker Compose |
+| **CI/CD** | GitHub Actions |
+| **Linting** | ESLint 8 |
+
+---
+
+## Features
+
+### Core Functionality
+- **View Orders** — Sortable order list with customer and product details
+- **Create Orders** — Form with customer/product selection, inventory validation, and price preview
+- **Search Customers** — Real-time search by name with ILIKE pattern matching
+- **Add Customers** — Inline customer creation form
+
+### New Feature: Order Cancellation
+- Cancel orders via `POST /api/orders/:id/cancel`
+- Only `pending` and `confirmed` orders can be cancelled
+- `shipped` and `delivered` orders are rejected with a clear error message
+- Product inventory is **automatically restored** on cancellation
+- Full database transaction with row-level locking prevents race conditions
+- Frontend includes an **inline confirmation prompt** (not a browser popup)
+- Per-row **loading state** — shows "Cancelling…" without blocking other rows
+- **Success/error banners** with auto-dismiss after 4 seconds
+
+---
+
+## Bug Fixes Summary
+
+A full code audit identified 13 issues across the stack. Three critical fixes were implemented:
+
+### Fix 1: SQL Injection in Customer Search (Security)
+- **File:** `backend/src/routes/customers.js`
+- **Problem:** User input was concatenated directly into the SQL string, allowing arbitrary SQL execution
+- **Fix:** Replaced with a parameterized query (`$1`) — consistent with the rest of the codebase
+
+### Fix 2: N+1 Query on Order Listing (Performance)
+- **File:** `backend/src/routes/orders.js`
+- **Problem:** Listing N orders executed `1 + 2N` serial database queries (201 queries for 100 orders)
+- **Fix:** Replaced the loop with a single `JOIN` query — the same pattern already used in `GET /orders/:id`
+
+### Fix 3: Race Condition in Order Creation (Data Integrity)
+- **File:** `backend/src/routes/orders.js`
+- **Problem:** Inventory check and decrement were separate, non-transactional queries. Concurrent requests could oversell inventory
+- **Fix:** Wrapped in a `BEGIN`/`COMMIT`/`ROLLBACK` transaction with `SELECT ... FOR UPDATE` row-level locking
+
+> See [`BUG_REPORT.md`](BUG_REPORT.md) for the complete 13-issue audit and [`FIX_REPORT.md`](FIX_REPORT.md) for detailed before/after code with explanations.
 
 ---
 
 ## Getting Started
 
+### Option A: Docker (Recommended)
+
 ```bash
 docker compose up --build
 ```
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:3001/api
-- **Database**: PostgreSQL on port 5432 (user: `admin`, password: `admin123`, db: `orderdb`)
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:3001/api |
+| PostgreSQL | `localhost:5432` (user: `admin`, password: `admin123`, db: `orderdb`) |
 
-The database is seeded with sample customers, products, and orders.
+The database is automatically seeded with sample customers, products, and orders on first boot.
 
----
+### Option B: Manual Setup
 
-## Your Tasks
+**Prerequisites:** Node.js 18+, PostgreSQL 15+
 
-### Task 1: Bug Report (Document)
+#### 1. Database
 
-Review the entire codebase — backend, frontend, and infrastructure. Find at least **5 issues** (bugs, security vulnerabilities, performance problems, or bad practices).
+```bash
+# Create the database
+createdb -U postgres orderdb
 
-For each issue, write:
-- **What** the issue is
-- **Where** it is in the code (file + line or function)
-- **Why** it matters (impact — security, performance, correctness, reliability)
-- **How** you would fix it
+# Seed schema and data
+psql -U postgres -d orderdb -f db/init.sql
+```
 
-Submit this as a `BUG_REPORT.md` file in the repo root.
+#### 2. Backend
 
-### Task 2: Fix Critical Issues
+```bash
+cd backend
+npm install
 
-Fix the following from your bug report (or any three critical issues you identified):
-1. The most serious **security vulnerability** you found
-2. The most impactful **performance issue**
-3. Any **data integrity / correctness** bug
+# Set environment variables
+export DB_HOST=localhost
+export DB_USER=postgres
+export DB_PASSWORD=your_password
+export DB_NAME=orderdb
+export DB_PORT=5432
+export PORT=3001
 
-Commit each fix separately with a clear commit message explaining the fix.
+npm start
+```
 
-### Task 3: Build a Feature — Order Cancellation
+#### 3. Frontend
 
-Add the ability to **cancel an order** with the following requirements:
+```bash
+cd frontend
+npm install
 
-- New API endpoint to cancel an order
-- An order can only be cancelled if its status is `pending` or `confirmed`
-- Orders that are `shipped` or `delivered` **cannot** be cancelled
-- When an order is cancelled, the product inventory must be **restored** (rolled back)
-- Add a "Cancel" button in the frontend order list for eligible orders
-- Show a confirmation dialog before cancelling
-- Handle errors gracefully on both frontend and backend
+# If backend is not on port 3001, set the API URL
+export REACT_APP_API_URL=http://localhost:3001/api
 
-### Task 4: Improve Deployment (Pick One)
-
-Choose **one** of the following:
-
-**Option A:** Add a GitHub Actions CI pipeline (`.github/workflows/ci.yml`) that runs on pull requests and performs:
-- Linting (add ESLint to the backend)
-- A basic health check test against the containerized app
-
-**Option B:** Improve the Dockerfiles and docker-compose.yml to be more production-ready. Document what you changed and why in a `DEPLOYMENT.md` file.
+npm start
+```
 
 ---
 
-## Submission
+## API Endpoints
 
-1. Fork this repo (you should already have access to a private fork)
-2. Create a branch named `solution/<your-name>`
-3. Commit your work with clear, descriptive commit messages
-4. Open a Pull Request against `main`
+### Orders
 
-Your PR should include:
-- `BUG_REPORT.md`
-- Fixes with separate commits
-- The cancellation feature
-- Your deployment improvement (Option A or B)
-- Any optional `DEPLOYMENT.md` or other docs you want to include
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/orders` | List all orders with customer and product details |
+| `GET` | `/api/orders/:id` | Get a single order by ID |
+| `POST` | `/api/orders` | Create a new order (validates inventory) |
+| `PATCH` | `/api/orders/:id/status` | Update order status |
+| `POST` | `/api/orders/:id/cancel` | Cancel an order and restore inventory |
+
+#### Create Order
+
+```bash
+curl -X POST http://localhost:3001/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer_id": 1,
+    "product_id": 1,
+    "quantity": 2,
+    "shipping_address": "42 MG Road, Bangalore"
+  }'
+```
+
+#### Cancel Order
+
+```bash
+curl -X POST http://localhost:3001/api/orders/3/cancel
+```
+
+**Cancellation rules:**
+| Current Status | Can Cancel? | Response |
+|---|---|---|
+| `pending` | ✅ Yes | `200` — Order cancelled, inventory restored |
+| `confirmed` | ✅ Yes | `200` — Order cancelled, inventory restored |
+| `shipped` | ❌ No | `400` — "Cannot cancel order with status shipped" |
+| `delivered` | ❌ No | `400` — "Cannot cancel order with status delivered" |
+| `cancelled` | ❌ No | `400` — "Order is already cancelled" |
+
+### Customers
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/customers` | List all customers |
+| `GET` | `/api/customers/search?name=X` | Search customers by name |
+| `GET` | `/api/customers/:id` | Get a single customer |
+| `POST` | `/api/customers` | Create a new customer |
+
+### Products
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/products` | List all products |
+| `GET` | `/api/products/:id` | Get a single product |
+| `PATCH` | `/api/products/:id/inventory` | Update product inventory |
+
+### Health Check
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Returns `{ "status": "ok" }` |
 
 ---
 
-## Evaluation Criteria
+## CI/CD Pipeline
 
-We're looking for:
-- **Code reading ability**: Can you identify real problems in existing code?
-- **Judgment**: Do you prioritize the right issues?
-- **Implementation quality**: Are your fixes correct and clean?
-- **Communication**: Can you explain technical issues clearly?
-- **Practical thinking**: Does your code work in the real world (error handling, edge cases)?
+A GitHub Actions workflow runs automatically on every pull request to `main`.
 
-We are **not** looking for:
-- Rewriting the entire app from scratch
-- Adding unnecessary libraries or frameworks
-- Over-engineering the solution
+### Pipeline Structure
+
+```
+Pull Request → main
+       │
+       ▼
+  ┌──────────┐
+  │   LINT   │  ← ESLint on backend code
+  └────┬─────┘
+       │ must pass
+       ▼
+  ┌──────────────┐
+  │ HEALTH CHECK │  ← Real PostgreSQL + seeded DB + API tests
+  └──────────────┘
+```
+
+### Job 1: Lint
+- Checks out code
+- Installs backend dependencies
+- Runs `npm run lint` (ESLint with Node.js rules)
+
+### Job 2: Health Check
+- Spins up a **real PostgreSQL 15** service container
+- Seeds the database with `db/init.sql`
+- Starts the backend server
+- Verifies three endpoints respond correctly:
+  - `GET /api/health` → HTTP 200
+  - `GET /api/orders` → no error in response
+  - `GET /api/products` → no error in response
+
+> See [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for the full configuration.
 
 ---
 
-## Timeline
+## Project Structure
 
-You have **4 days** from receiving this repo. If you need more time, let us know — we'd rather see quality work than rushed code.
+```
+├── .github/workflows/
+│   └── ci.yml                  # GitHub Actions CI pipeline
+├── backend/
+│   ├── Dockerfile
+│   ├── .eslintrc.json          # ESLint configuration
+│   ├── package.json
+│   └── src/
+│       ├── index.js            # Express entry point
+│       ├── config/
+│       │   └── db.js           # PostgreSQL connection pool
+│       └── routes/
+│           ├── customers.js    # Customer CRUD routes
+│           ├── products.js     # Product CRUD routes
+│           └── orders.js       # Order CRUD + cancel route
+├── frontend/
+│   ├── Dockerfile
+│   ├── package.json
+│   └── src/
+│       ├── index.js            # React entry point
+│       ├── App.js              # Tab navigation
+│       ├── App.css             # Global styles
+│       ├── api/
+│       │   └── index.js        # API client functions
+│       └── components/
+│           ├── OrderList.js    # Order table + cancel UI
+│           ├── CreateOrder.js  # Order creation form
+│           └── CustomerSearch.js
+├── db/
+│   └── init.sql                # Schema + seed data
+├── docker-compose.yml
+├── BUG_REPORT.md               # 13-issue code audit
+├── FIX_REPORT.md               # Detailed fix documentation
+└── README.md
+```
 
-Good luck!
+---
+
+## Deliverables
+
+| Deliverable | File |
+|---|---|
+| Bug Report (13 issues) | [`BUG_REPORT.md`](BUG_REPORT.md) |
+| Fix Report (3 critical fixes) | [`FIX_REPORT.md`](FIX_REPORT.md) |
+| Order Cancellation Feature | `backend/src/routes/orders.js` + `frontend/src/components/OrderList.js` |
+| CI/CD Pipeline | `.github/workflows/ci.yml` |

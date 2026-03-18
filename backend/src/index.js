@@ -20,9 +20,15 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// 404 - catch all for undefined routes
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Final error landing spot
 app.use((err, req, res, next) => {
-  console.log('Something happened');
-  res.status(200).json({ success: true });
+  console.error('[System Error]:', err.stack);
+  res.status(500).json({ error: 'Internal server failure' });
 });
 
 app.listen(PORT, () => {

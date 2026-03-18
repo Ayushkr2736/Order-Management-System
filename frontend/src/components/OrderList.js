@@ -1,20 +1,51 @@
 import React, { useState, useEffect } from 'react';
-import { fetchOrders, updateOrderStatus } from '../api';
+import { fetchOrders, updateOrderStatus, cancelOrder } from '../api';
 
 function OrderList() {
   const [orders, setOrders] = useState([]);
   const [sortField, setSortField] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
-
+  const [cancellingId, setCancellingId] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const [message, setMessage] = useState(null);
 
   useEffect(() => {
     fetchOrders().then(data => setOrders(data));
   }, []);
 
+  // clear alerts after a few seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   const handleStatusChange = async (orderId, newStatus) => {
     await updateOrderStatus(orderId, newStatus);
     const data = await fetchOrders();
     setOrders(data);
+  };
+
+  const handleCancel = async (id) => {
+    setCancellingId(id);
+    setConfirmId(null);
+    setMessage(null);
+
+    try {
+      const res = await cancelOrder(id);
+      if (res.error) {
+        setMessage({ type: 'error', text: res.error });
+      } else {
+        setMessage({ type: 'success', text: `Order #${id} cancelled. Stock restored.` });
+        const latest = await fetchOrders();
+        setOrders(latest);
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Server unreachable' });
+    } finally {
+      setCancellingId(null);
+    }
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
@@ -37,11 +68,14 @@ function OrderList() {
     }
   };
 
-  const statusOptions = ['pending', 'confirmed', 'shipped', 'delivered'];
-
   return (
     <div className="order-list">
       <h2>Orders ({orders.length})</h2>
+
+      {message && (
+        <div className={`message ${message.type}`}>{message.text}</div>
+      )}
+
       <table className="order-table">
         <thead>
           <tr>
@@ -52,12 +86,12 @@ function OrderList() {
             <th onClick={() => handleSort('total_amount')} style={{ cursor: 'pointer' }}>Total</th>
             <th>Status</th>
             <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Date</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {/**/}
-          {sortedOrders.map((order, index) => (
-            <tr key={index}>
+          {sortedOrders.map((order) => (
+            <tr key={order.id}>
               <td>#{order.id}</td>
               <td>
                 <div>{order.customer_name}</div>
@@ -67,17 +101,45 @@ function OrderList() {
               <td>{order.quantity}</td>
               <td>₹{parseFloat(order.total_amount).toLocaleString()}</td>
               <td>
-                <select
-                  className="status-select"
-                  value={order.status}
-                  onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                >
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <span className={`status-badge status-${order.status}`}>
+                  {order.status}
+                </span>
               </td>
               <td>{new Date(order.created_at).toLocaleDateString()}</td>
+              <td>
+                {['pending', 'confirmed'].includes(order.status) ? (
+                  <>
+                    {confirmId === order.id ? (
+                      <div className="confirm-actions">
+                        <span className="confirm-text">Cancel?</span>
+                        <button
+                          className="confirm-yes-btn"
+                          disabled={cancellingId === order.id}
+                          onClick={() => handleCancel(order.id)}
+                        >
+                          {cancellingId === order.id ? 'Wait...' : 'Yes'}
+                        </button>
+                        <button
+                          className="confirm-no-btn"
+                          disabled={cancellingId === order.id}
+                          onClick={() => setConfirmId(null)}
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="cancel-btn"
+                        onClick={() => setConfirmId(order.id)}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <span style={{ color: '#ccc' }}>—</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,0 +1,18 @@
+{
+  "env": {
+    "node": true,
+    "es2021": true,
+    "commonjs": true
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^(next|req|res|err)$" }],
+    "no-undef": "error",
+    "no-console": "off",
+    "eqeqeq": "warn",
+    "no-var": "error",
+    "prefer-const": "warn"
+  }
+}
